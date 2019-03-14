@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/rs/xid"
 	"github.com/segmentio/kafka-go"
 	"realtime-chat/model"
 )
@@ -12,6 +13,8 @@ type KafkaClient struct {
 	Messages []model.Message
 	Topic    string
 }
+
+var locationId = xid.New().String()
 
 func (kc *KafkaClient) ConnectToTopic() {
 	kc.Messages = make([]model.Message, 0)
@@ -27,19 +30,18 @@ func (kc *KafkaClient) ConnectToTopic() {
 	r.SetOffset(0)
 
 	for {
-
 		m, err := r.ReadMessage(context.Background())
+
 		message := model.Message{}
 		json.Unmarshal(m.Value, &message)
 
-		messagea := model.Message{Content: string(message.Content)}
-		jsonMessage, _ := json.Marshal(&messagea)
-		Manager.Broadcast <- jsonMessage
+		if message.SourceLocation != locationId {
+			Manager.Broadcast <- m.Value
+		}
 
 		fmt.Printf("message at offset %d: %s = %s\n", m.Offset, string(m.Key), string(m.Value))
 
 		if err != nil {
-
 			break
 		}
 	}
@@ -55,7 +57,9 @@ func (kc *KafkaClient) SendMessage(message model.Message) error {
 		Topic:   kc.Topic,
 	})
 
-	message.Id = "100"
+	message.Id = xid.New().String()
+	message.SourceLocation = locationId
+
 	// Serialize the struct to JSON
 	jsonBytes, _ := json.Marshal(message)
 
@@ -65,7 +69,6 @@ func (kc *KafkaClient) SendMessage(message model.Message) error {
 			Value: []byte(jsonBytes),
 		},
 	)
-
 	return err
 
 }
