@@ -1,4 +1,4 @@
-package dbclient
+package services
 
 import (
 	"context"
@@ -32,11 +32,9 @@ func (kc *KafkaClient) ConnectToTopic() {
 		message := model.Message{}
 		json.Unmarshal(m.Value, &message)
 
-		kc.Messages = append(kc.Messages, message)
-
-		if len(kc.Messages) > 10 {
-			kc.Messages = kc.Messages[1:len(kc.Messages)]
-		}
+		messagea := model.Message{Content: string(message.Content)}
+		jsonMessage, _ := json.Marshal(&messagea)
+		Manager.Broadcast <- jsonMessage
 
 		fmt.Printf("message at offset %d: %s = %s\n", m.Offset, string(m.Key), string(m.Value))
 
@@ -50,17 +48,14 @@ func (kc *KafkaClient) ConnectToTopic() {
 
 }
 
-func (kc *KafkaClient) GetMessages() ([]model.Message, error) {
-	return kc.Messages, nil
-}
-
-func (kc *KafkaClient) AddMessage(message model.Message) error {
+func (kc *KafkaClient) SendMessage(message model.Message) error {
 
 	w := kafka.NewWriter(kafka.WriterConfig{
 		Brokers: []string{"localhost:9092"},
 		Topic:   kc.Topic,
 	})
 
+	message.Id = "100"
 	// Serialize the struct to JSON
 	jsonBytes, _ := json.Marshal(message)
 
