@@ -23,6 +23,7 @@ func main() {
 		Topic: "test0",
 	}
 
+	//go services.Kafka.Connect()
 	go services.Kafka.ConnectToTopic()
 	go services.Manager.Start()
 
