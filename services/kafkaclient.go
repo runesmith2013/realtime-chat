@@ -7,17 +7,16 @@ import (
 	"github.com/rs/xid"
 	"github.com/segmentio/kafka-go"
 	"realtime-chat/model"
+	"time"
 )
 
 type KafkaClient struct {
-	Messages []model.Message
 	Topic    string
 }
 
 var locationId = xid.New().String()
 
 func (kc *KafkaClient) ConnectToTopic() {
-	kc.Messages = make([]model.Message, 0)
 
 	r := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:   []string{"localhost:9092"},
@@ -27,16 +26,27 @@ func (kc *KafkaClient) ConnectToTopic() {
 		MaxBytes:  10e6, // 10MB
 	})
 
-	r.SetOffset(0)
+	r.SetOffset(kafka.LastOffset);
 
 	for {
 		m, err := r.ReadMessage(context.Background())
 
+		if err != nil {
+			fmt.Printf("Error reading message from Kafka queue");
+		}
+
 		message := model.Message{}
-		json.Unmarshal(m.Value, &message)
+		err = json.Unmarshal(m.Value, &message)
+
+		if err != nil {
+			fmt.Printf("Unable to parse message %s = %s\n", string(m.Key), string(m.Value))
+		}
 
 		if message.SourceLocation != locationId {
 			Manager.Broadcast <- m.Value
+		} else {
+			fmt.Printf("Ignoring message from source location. \n" )
+
 		}
 
 		fmt.Printf("message at offset %d: %s = %s\n", m.Offset, string(m.Key), string(m.Value))
@@ -48,6 +58,30 @@ func (kc *KafkaClient) ConnectToTopic() {
 
 	r.Close()
 
+}
+
+
+func (kc *KafkaClient) Connect() {
+	// to consume messages
+	topic := "test0"
+	partition := 0
+
+	conn, _ := kafka.DialLeader(context.Background(), "tcp", "localhost:9092", topic, partition)
+
+	conn.SetReadDeadline(time.Now().Add(10*time.Second))
+	batch := conn.ReadBatch(10e3, 1e6) // fetch 10KB min, 1MB max
+
+	b := make([]byte, 10e3) // 10KB max per message
+	for {
+		_, err := batch.Read(b)
+		if err != nil {
+			break
+		}
+		fmt.Println(string(b))
+	}
+
+	batch.Close()
+	conn.Close()
 }
 
 func (kc *KafkaClient) SendMessage(message model.Message) error {
